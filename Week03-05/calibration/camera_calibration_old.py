@@ -11,8 +11,7 @@ from machinevisiontoolbox import Image, CentralCamera
 if __name__ == '__main__':
     
     # Display image
-    img = Image.Read('./calib_0.png', grey=True)
-    image = Image(img)
+    image = Image('calib_0.png', grey=True)
     fig = matplotlib.pyplot.figure()
     plt.imshow(image.image, cmap='gray')
     
@@ -40,8 +39,7 @@ if __name__ == '__main__':
         print(str(p.T))
     
     print("Specify points on the calibration rig following order")
-    fig.canvas.manager.set_window_title('Close image window once all 8 points are selected')    
-  
+    fig.canvas.set_window_title('Close image window once all 8 points are selected')    
     ka = fig.canvas.mpl_connect('button_press_event', onclick)
     plt.show()
     
@@ -61,8 +59,8 @@ if __name__ == '__main__':
     ]).T * cm # calibration rig specs
     
     # compute the camera matrix
-    C, _ = CentralCamera.points2C(P_calib, p)
-    camera = CentralCamera.decomposeC(C)
+    C = CentralCamera.camcal(P_calib, p)
+    camera = CentralCamera.invcamcal(C)
     
     print("\nCamera info:\n", camera)
     
