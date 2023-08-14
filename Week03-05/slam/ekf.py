@@ -91,9 +91,16 @@ class EKF:
         x = self.get_state_vector()
 
         # todo: add your codes here to compute the predicted x
-        cov = self.predict_covariance(raw_drive_meas)
         self.robot.drive(raw_drive_meas)
-        self.P = F@self.P@F.T + cov
+
+        # Get A using state_transition() calculate Jacobian of dynamics
+        A = self.state_transition(raw_drive_meas)
+
+        # Get Q using predict_covariance() calculate covariance matrix for dynamics model
+        Q = self.predict_covariance(raw_drive_meas)
+
+        # Update robot's uncertainty and update robot's state
+        self.P = A @ self.P @ A.T + Q
 
 
     # the update step of EKF
@@ -119,9 +126,17 @@ class EKF:
         x = self.get_state_vector()
         y = z-z_hat
         # todo: add your codes here to compute the updated x
-        S = H@self.P+R
-        K = self.P@H.T@(np.linalg.inv(S))
-        self.set_state_vector(x+K@y)
+        #Compute Kalman Gain
+        S = H @ self.P @ H.T + R #+ 0.01*np.eye(R.shape[0])
+        K = self.P @ H.T @ np.linalg.inv(S)
+
+        #Correct state
+        y = z - z_hat
+        x = x + K @ y
+        self.set_state_vector(x)
+
+        #Correct covariance
+        self.P = (np.eye(x.shape[0]) - K @ H) @ self.P
         
 
     def state_transition(self, raw_drive_meas):
