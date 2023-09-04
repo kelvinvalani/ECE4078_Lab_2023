@@ -9,7 +9,7 @@ from YOLO.detector import Detector
 
 # list of target fruits and vegs types
 # Make sure the names are the same as the ones used in your YOLO model
-TARGET_TYPES = ['orange', 'lemon', 'lime', 'tomato', 'capsicum', 'potato', 'pumpkin', 'garlic']
+TARGET_TYPES = ['Orange', 'Lemon', 'Lime', 'Tomato', 'Capsicum', 'Potato', 'Pumpkin', 'Garlic']
 
 
 def estimate_pose(camera_matrix, obj_info, robot_pose):
@@ -35,10 +35,10 @@ def estimate_pose(camera_matrix, obj_info, robot_pose):
     # there are 8 possible types of fruits and vegs
     ######### Replace with your codes #########
     # TODO: measure actual sizes of targets [width, depth, height] and update the dictionary of true target dimensions
-    target_dimensions_dict = {'orange': [1.0,1.0,1.0], 'lemon': [1.0,1.0,1.0], 
-                              'lime': [1.0,1.0,1.0], 'tomato': [1.0,1.0,1.0], 
-                              'capsicum': [1.0,1.0,1.0], 'potato': [1.0,1.0,1.0], 
-                              'pumpkin': [1.0,1.0,1.0], 'garlic': [1.0,1.0,1.0]}
+    target_dimensions_dict = {'Orange': [0.08,0.08,0.08], 'Lemon': [0.08,0.05,0.05], 
+                              'Lime': [0.08,0.05,0.05], 'Tomato': [0.07,0.07,0.07], 
+                              'Capsicum': [0.095,0.085,0.085], 'Potato': [0.11,0.06,0.05], 
+                              'Pumpkin': [0.07,0.085,0.085], 'Garlic': [0.08,0.065,0.065]}
     #########
 
     # estimate target pose using bounding box and robot pose
@@ -76,13 +76,50 @@ def merge_estimations(target_pose_dict):
         target_est: dict, target pose estimations after merging
     """
     target_est = {}
+    #todo
+    fruit_estimations = {'Orange': [], 'Lemon': [], 
+                              'Lime': [], 'Tomato': [], 
+                              'Capsicum': [], 'Potato': [], 
+                              'Pumpkin': [], 'Garlic': []}
 
-    ######### Replace with your codes #########
-    # TODO: replace it with a solution to merge the multiple occurrences of the same class type (e.g., by a distance threshold)
-    target_est = target_pose_dict
-    #########
-   
+    # Combine the estimations from multiple detector outputs
+    for f in target_pose_dict:
+        for key, values in target_pose_dict[f].items():
+            fruit_type = key.split('_')[0]
+            if fruit_type in fruit_estimations:
+                fruit_estimations[fruit_type].append(np.array(list(values.values()), dtype=float))
+
+    # Merge the fruit estimations
+    for fruit_type, estimations in fruit_estimations.items():
+        if len(estimations) > 2:
+            merged_estimation = average_fruit_location(estimations)
+            for i in range(2):
+                target_est[f'{fruit_type}_{i}'] = {'y': merged_estimation[i][0], 'x': merged_estimation[i][1]}
+
     return target_est
+
+
+def average_fruit_location(fruit_est):
+    while len(fruit_est) > 2:
+        # Calculate pairwise distances between all points
+        distances = np.linalg.norm(fruit_est[:, np.newaxis, :] - fruit_est, axis=2)
+        np.fill_diagonal(distances, np.inf)  # Set diagonal elements to infinity
+
+        # Find indices of the closest pair
+        min_indices = np.unravel_index(np.argmin(distances), distances.shape)
+        min1, min2 = min_indices
+
+        # Merge two points by averaging
+        x_avg = (fruit_est[min1][1] + fruit_est[min2][1]) / 2
+        y_avg = (fruit_est[min1][0] + fruit_est[min2][0]) / 2
+
+        # Remove the merged points and add the averaged point
+        fruit_est = np.delete(fruit_est, (min1, min2), axis=0)
+        fruit_est = np.vstack((fruit_est, [y_avg, x_avg]))
+
+    return fruit_est
+
+
 
 
 # main loop
