@@ -85,39 +85,34 @@ def merge_estimations(target_pose_dict):
     # Combine the estimations from multiple detector outputs
     for f in target_pose_dict:
         for key, values in target_pose_dict[f].items():
-            fruit_type = key.split('_')[0]
+            fruit_type = f.split('_')[0]
             if fruit_type in fruit_estimations:
-                fruit_estimations[fruit_type].append(np.array(list(values.values()), dtype=float))
+                xval = target_pose_dict[f]['x']
+                yval = target_pose_dict[f]['y']
+                fruit_estimations[fruit_type].append(np.array([xval, yval]))
 
     # Merge the fruit estimations
     for fruit_type, estimations in fruit_estimations.items():
-        if len(estimations) > 2:
+        if len(estimations) >= 2:
             merged_estimation = average_fruit_location(estimations)
             for i in range(2):
-                target_est[f'{fruit_type}_{i}'] = {'y': merged_estimation[i][0], 'x': merged_estimation[i][1]}
+                target_est[f'{fruit_type}_{0}'] = {'y': merged_estimation[1], 'x': merged_estimation[0]}
 
     return target_est
 
 
 def average_fruit_location(fruit_est):
-    while len(fruit_est) > 2:
-        # Calculate pairwise distances between all points
-        distances = np.linalg.norm(fruit_est[:, np.newaxis, :] - fruit_est, axis=2)
-        np.fill_diagonal(distances, np.inf)  # Set diagonal elements to infinity
+    xsum = 0
+    ysum = 0
+    for i in range(len(fruit_est)):
+        xsum= xsum + fruit_est[i][0]
+        ysum= ysum + fruit_est[i][1]
+    
+    xavg = xsum/len(fruit_est)
+    yavg = ysum/len(fruit_est)
 
-        # Find indices of the closest pair
-        min_indices = np.unravel_index(np.argmin(distances), distances.shape)
-        min1, min2 = min_indices
+    return np.array([xavg,yavg])
 
-        # Merge two points by averaging
-        x_avg = (fruit_est[min1][1] + fruit_est[min2][1]) / 2
-        y_avg = (fruit_est[min1][0] + fruit_est[min2][0]) / 2
-
-        # Remove the merged points and add the averaged point
-        fruit_est = np.delete(fruit_est, (min1, min2), axis=0)
-        fruit_est = np.vstack((fruit_est, [y_avg, x_avg]))
-
-    return fruit_est
 
 
 
@@ -131,7 +126,7 @@ if __name__ == "__main__":
     camera_matrix = np.loadtxt(fileK, delimiter=',')
 
     # init YOLO model
-    model_path = f'{script_dir}/YOLO/model/yolov8s_team11.pt'
+    model_path = f'{script_dir}/YOLO/model/yolov8_model.pt'
     yolo = Detector(model_path)
 
     # create a dictionary of all the saved images with their corresponding robot pose
@@ -157,11 +152,9 @@ if __name__ == "__main__":
             target_pose_dict[f'{detection[0]}_{occurrence}'] = estimate_pose(camera_matrix, detection, robot_pose)
 
             detected_type_list.append(detection[0])
-
     # merge the estimations of the targets so that there are at most 3 estimations of each target type
     target_est = {}
     target_est = merge_estimations(target_pose_dict)
-    print(target_est)
     # save target pose estimations
     with open(f'{script_dir}/lab_output/targets.txt', 'w') as fo:
         json.dump(target_est, fo, indent=4)
