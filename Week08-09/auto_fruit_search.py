@@ -109,16 +109,23 @@ def drive_to_point(waypoint, robot_pose):
     # TODO: replace with your codes to make the robot drive to the waypoint
     # One simple strategy is to first turn on the spot facing the waypoint,
     # then drive straight to the way point
+    angle = np.arctan((waypoint[1]-robot_pose[1])/(waypoint[0]-robot_pose[0])) #finding the angle from the robot to the way point.
+    angle = robot_pose[-1] - angle #taking the pose of the robot into account to find the angle to turn
+
 
     wheel_vel = 30 # tick
     
     # turn towards the waypoint
-    turn_time = 0.0 # replace with your calculation
+    base_line = 0.535024533975867245
+    turn_time = (base_line * angle)/(wheel_vel) # replace with your calculation
+
     print("Turning for {:.2f} seconds".format(turn_time))
     ppi.set_velocity([0, 1], turning_tick=wheel_vel, time=turn_time)
     
     # after turning, drive straight to the waypoint
-    drive_time = 0.0 # replace with your calculation
+    d = ((waypoint[1]+robot_pose[1]**2)+(waypoint[0]+robot_pose[0])**2) #calculating the distance to the point
+    scale = 2635203168862666930*10^-3
+    drive_time = d*scale
     print("Driving for {:.2f} seconds".format(drive_time))
     ppi.set_velocity([1, 0], tick=wheel_vel, time=drive_time)
     ####################################################
@@ -130,9 +137,14 @@ def get_robot_pose():
     ####################################################
     # TODO: replace with your codes to estimate the pose of the robot
     # We STRONGLY RECOMMEND you to use your SLAM code from M2 here
-
     # update the robot pose [x,y,theta]
-    robot_pose = [0.0,0.0,0.0] # replace with your calculation
+    image_poses = {}
+    with open(f'{script_dir}/lab_output/images.txt') as fp:
+        for line in fp.readlines():
+            pose_dict = ast.literal_eval(line)
+            image_poses[pose_dict['imgfname']] = pose_dict['pose']
+
+    robot_pose = image_poses[image_poses.keys()[-1]]
     ####################################################
 
     return robot_pose
