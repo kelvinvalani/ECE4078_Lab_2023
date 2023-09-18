@@ -9,7 +9,7 @@ from YOLO.detector import Detector
 
 # list of target fruits and vegs types
 # Make sure the names are the same as the ones used in your YOLO model
-TARGET_TYPES = ['Orange', 'Lemon', 'Lime', 'Tomato', 'Capsicum', 'Potato', 'Pumpkin', 'Garlic']
+TARGET_TYPES = ['orange', 'lemon', 'lime', 'tomato', 'capsicum', 'potato', 'pumpkin', 'garlic']
 
 
 def estimate_pose(camera_matrix, obj_info, robot_pose):
@@ -35,10 +35,10 @@ def estimate_pose(camera_matrix, obj_info, robot_pose):
     # there are 8 possible types of fruits and vegs
     ######### Replace with your codes #########
     # TODO: measure actual sizes of targets [width, depth, height] and update the dictionary of true target dimensions
-    target_dimensions_dict = {'Orange': [0.08,0.08,0.08], 'Lemon': [0.08,0.05,0.05], 
-                              'Lime': [0.08,0.05,0.05], 'Tomato': [0.07,0.07,0.07], 
-                              'Capsicum': [0.095,0.085,0.085], 'Potato': [0.11,0.06,0.05], 
-                              'Pumpkin': [0.07,0.085,0.085], 'Garlic': [0.08,0.065,0.065]}
+    target_dimensions_dict = {'orange': [1.0,1.0,1.0], 'lemon': [1.0,1.0,1.0], 
+                              'lime': [1.0,1.0,1.0], 'tomato': [1.0,1.0,1.0], 
+                              'capsicum': [1.0,1.0,1.0], 'potato': [1.0,1.0,1.0], 
+                              'pumpkin': [1.0,1.0,1.0], 'garlic': [1.0,1.0,1.0]}
     #########
 
     # estimate target pose using bounding box and robot pose
@@ -49,19 +49,28 @@ def estimate_pose(camera_matrix, obj_info, robot_pose):
     # compute pose of the target based on bounding box info, true object height, and robot's pose
     pixel_height = target_box[3]
     pixel_center = target_box[0]
-    distance = true_height/pixel_height * focal_length  # estimated distance between the object and the robot based on height
-    # image size 640x480 pixels, 640/2=320
-    x_shift = 320/2 - pixel_center              # x distance between bounding box centre and centreline in camera view
+    distance = true_height/pixel_height * focal_length  # estimated distance between the robot and the centre of the image plane based on height
+    # training image size 320x240p
+    image_width = 320 # change this if your training image is in a different size (check details of pred_0.png taken by your robot)
+    x_shift = image_width/2 - pixel_center              # x distance between bounding box centre and centreline in camera view
     theta = np.arctan(x_shift/focal_length)     # angle of object relative to the robot
-    horizontal_relative_distance = distance * np.sin(theta)     # relative distance between robot and object on x axis
-    vertical_relative_distance = distance * np.cos(theta)       # relative distance between robot and object on y axis
-    relative_pose = {'y': vertical_relative_distance, 'x': horizontal_relative_distance}    # relative object location
-
     ang = theta + robot_pose[2]     # angle of object in the world frame
+    
+   # relative object location
+    distance_obj = distance/np.cos(theta) # relative distance between robot and object
+    x_relative = distance_obj * np.cos(theta) # relative x pose
+    y_relative = distance_obj * np.sin(theta) # relative y pose
+    relative_pose = {'x': x_relative, 'y': y_relative}
+    #print(f'relative_pose: {relative_pose}')
 
-    # location of object in the world frame
-    target_pose = {'y': (robot_pose[1]+relative_pose['y']*np.sin(ang))[0],
-                   'x': (robot_pose[0]+relative_pose['x']*np.cos(ang))[0]}
+    # location of object in the world frame using rotation matrix
+    delta_x_world = x_relative * np.cos(robot_pose[2]) - y_relative * np.sin(robot_pose[2])
+    delta_y_world = x_relative * np.sin(robot_pose[2]) + y_relative * np.cos(robot_pose[2])
+    # add robot pose with delta target pose
+    target_pose = {'y': (robot_pose[1]+delta_y_world)[0],
+                   'x': (robot_pose[0]+delta_x_world)[0]}
+    #print(f'delta_x_world: {delta_x_world}, delta_y_world: {delta_y_world}')
+    #print(f'target_pose: {target_pose}')
 
     return target_pose
 
@@ -76,69 +85,14 @@ def merge_estimations(target_pose_dict):
         target_est: dict, target pose estimations after merging
     """
     target_est = {}
-    #todo
-    fruit_estimations = {'Orange': [], 'Lemon': [], 
-                              'Lime': [], 'Tomato': [], 
-                              'Capsicum': [], 'Potato': [], 
-                              'Pumpkin': [], 'Garlic': []}
 
-    # Combine the estimations from multiple detector outputs
-    for f in target_pose_dict:
-        for key, values in target_pose_dict[f].items():
-            fruit_type = f.split('_')[0]
-            if fruit_type in fruit_estimations:
-                xval = target_pose_dict[f]['x']
-                yval = target_pose_dict[f]['y']
-                fruit_estimations[fruit_type].append(np.array([xval, yval]))
-
-    # Merge the fruit estimations
-    for fruit_type, estimations in fruit_estimations.items():
-        if len(estimations) >= 2:
-            merged_estimation = average_coordinates(estimations)
-            for i in range(len(merged_estimation)):
-                target_est[f'{fruit_type}_{i}'] = {'y': merged_estimation[i][1], 'x': merged_estimation[i][0]}
-    print(target_est)
+    ######### Replace with your codes #########
+    # TODO: replace it with a solution to merge the multiple occurrences of the same class type (e.g., by a distance threshold)
+    target_est = target_pose_dict
+    #########
+   
     return target_est
 
-
-def average_fruit_location(fruit_est):
-    xsum = 0
-    ysum = 0
-    for i in range(len(fruit_est)):
-        xsum= xsum + fruit_est[i][0]
-        ysum= ysum + fruit_est[i][1]
-    
-    xavg = xsum/len(fruit_est)
-    yavg = ysum/len(fruit_est)
-
-    return np.array([xavg,yavg])
-
-
-
-def average_coordinates(coordinates):
-    groups = []
-    threshold = 0.15
-    for x, y in coordinates:
-        added_to_group = False
-        
-        for group in groups:
-            group_x, group_y = group[0]
-            if ((x - group_x)**2 + (y - group_y)**2)**0.5 <= threshold:
-                group.append([x, y])
-                added_to_group = True
-                break
-        
-        if not added_to_group:
-            groups.append([(x, y)])
-    
-    averaged_groups = []
-    
-    for group in groups:
-        group_x = sum(x for x, y in group) / len(group)
-        group_y = sum(y for x, y in group) / len(group)
-        averaged_groups.append([group_x, group_y])
-    
-    return np.array(averaged_groups)
 
 # main loop
 if __name__ == "__main__":
@@ -175,10 +129,11 @@ if __name__ == "__main__":
             target_pose_dict[f'{detection[0]}_{occurrence}'] = estimate_pose(camera_matrix, detection, robot_pose)
 
             detected_type_list.append(detection[0])
+
     # merge the estimations of the targets so that there are at most 3 estimations of each target type
     target_est = {}
     target_est = merge_estimations(target_pose_dict)
-    target_est = {key.lower(): value for key, value in target_est.items()}
+    print(target_est)
     # save target pose estimations
     with open(f'{script_dir}/lab_output/targets.txt', 'w') as fo:
         json.dump(target_est, fo, indent=4)
