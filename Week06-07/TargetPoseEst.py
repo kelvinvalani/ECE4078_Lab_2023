@@ -9,7 +9,7 @@ from YOLO.detector import Detector
 
 # list of target fruits and vegs types
 # Make sure the names are the same as the ones used in your YOLO model
-TARGET_TYPES = ['orange', 'lemon', 'lime', 'tomato', 'capsicum', 'potato', 'pumpkin', 'garlic']
+TARGET_TYPES = ['Orange', 'Lemon', 'Lime', 'Tomato', 'Capsicum', 'Potato', 'Pumpkin', 'Garlic']
 
 
 def estimate_pose(camera_matrix, obj_info, robot_pose):
@@ -85,14 +85,69 @@ def merge_estimations(target_pose_dict):
         target_est: dict, target pose estimations after merging
     """
     target_est = {}
+    #todo
+    fruit_estimations = {'Orange': [], 'Lemon': [], 
+                              'Lime': [], 'Tomato': [], 
+                              'Capsicum': [], 'Potato': [], 
+                              'Pumpkin': [], 'Garlic': []}
 
-    ######### Replace with your codes #########
-    # TODO: replace it with a solution to merge the multiple occurrences of the same class type (e.g., by a distance threshold)
-    target_est = target_pose_dict
-    #########
-   
+    # Combine the estimations from multiple detector outputs
+    for f in target_pose_dict:
+        for key, values in target_pose_dict[f].items():
+            fruit_type = f.split('_')[0]
+            if fruit_type in fruit_estimations:
+                xval = target_pose_dict[f]['x']
+                yval = target_pose_dict[f]['y']
+                fruit_estimations[fruit_type].append(np.array([xval, yval]))
+
+    # Merge the fruit estimations
+    for fruit_type, estimations in fruit_estimations.items():
+        if len(estimations) >= 2:
+            merged_estimation = average_coordinates(estimations)
+            for i in range(len(merged_estimation)):
+                target_est[f'{fruit_type}_{i}'] = {'y': merged_estimation[i][1], 'x': merged_estimation[i][0]}
+    print(target_est)
     return target_est
 
+
+def average_fruit_location(fruit_est):
+    xsum = 0
+    ysum = 0
+    for i in range(len(fruit_est)):
+        xsum= xsum + fruit_est[i][0]
+        ysum= ysum + fruit_est[i][1]
+    
+    xavg = xsum/len(fruit_est)
+    yavg = ysum/len(fruit_est)
+
+    return np.array([xavg,yavg])
+
+
+
+def average_coordinates(coordinates):
+    groups = []
+    threshold = 0.15
+    for x, y in coordinates:
+        added_to_group = False
+        
+        for group in groups:
+            group_x, group_y = group[0]
+            if ((x - group_x)**2 + (y - group_y)**2)**0.5 <= threshold:
+                group.append([x, y])
+                added_to_group = True
+                break
+        
+        if not added_to_group:
+            groups.append([(x, y)])
+    
+    averaged_groups = []
+    
+    for group in groups:
+        group_x = sum(x for x, y in group) / len(group)
+        group_y = sum(y for x, y in group) / len(group)
+        averaged_groups.append([group_x, group_y])
+    
+    return np.array(averaged_groups)
 
 # main loop
 if __name__ == "__main__":
@@ -129,11 +184,10 @@ if __name__ == "__main__":
             target_pose_dict[f'{detection[0]}_{occurrence}'] = estimate_pose(camera_matrix, detection, robot_pose)
 
             detected_type_list.append(detection[0])
-
     # merge the estimations of the targets so that there are at most 3 estimations of each target type
     target_est = {}
     target_est = merge_estimations(target_pose_dict)
-    print(target_est)
+    target_est = {key.lower(): value for key, value in target_est.items()}
     # save target pose estimations
     with open(f'{script_dir}/lab_output/targets.txt', 'w') as fo:
         json.dump(target_est, fo, indent=4)
