@@ -8,11 +8,11 @@ import json
 import argparse
 import time
 
-# import SLAM components
-# sys.path.insert(0, "{}/slam".format(os.getcwd()))
-# from slam.ekf import EKF
-# from slam.robot import Robot
-# import slam.aruco_detector as aruco
+#import SLAM components
+sys.path.insert(0, "{}/slam".format(os.getcwd()))
+from slam.ekf import EKF
+from slam.robot import Robot
+import slam.aruco_detector as aruco
 
 # import utility functions
 sys.path.insert(0, "util")
@@ -64,7 +64,7 @@ def read_search_list():
     @return: search order of the target fruits
     """
     search_list = []
-    with open('search_list.txt', 'r') as fd:
+    with open('M4_prac_shopping_list.txt', 'r') as fd:
         fruits = fd.readlines()
 
         for fruit in fruits:
@@ -98,39 +98,74 @@ def print_target_fruits_pos(search_list, fruit_list, fruit_true_pos):
 # note that this function requires your camera and wheel calibration parameters from M2, and the "util" folder from M1
 # fully automatic navigation:
 # try developing a path-finding algorithm that produces the waypoints automatically
-def drive_to_point(waypoint, robot_pose):
-    # imports camera / wheel calibration parameters 
+
+def drive_to_point(waypoint, robot_pose, ppi):
+    # imports camera / wheel calibration parameters
     fileS = "calibration/param/scale.txt"
-    scale = np.loadtxt(fileS, delimiter=',')
+    scale = np.loadtxt(fileS, delimiter=',') # meters/tick
     fileB = "calibration/param/baseline.txt"
-    baseline = np.loadtxt(fileB, delimiter=',')
-    
+    baseline = np.loadtxt(fileB, delimiter=',') # meters
+
     ####################################################
-    # TODO: replace with your codes to make the robot drive to the waypoint
-    # One simple strategy is to first turn on the spot facing the waypoint,
-    # then drive straight to the way point
-    angle = np.arctan((waypoint[1]-robot_pose[1])/(waypoint[0]-robot_pose[0])) #finding the angle from the robot to the way point.
-    angle = robot_pose[-1] - angle #taking the pose of the robot into account to find the angle to turn
 
+    waypoint_x = waypoint[0]
+    waypoint_y = waypoint[1]
+    robot_x = robot_pose[0]
+    robot_y = robot_pose[1]
+    robot_theta = robot_pose[2]
+    waypoint_angle = np.arctan2((waypoint_y-robot_y),(waypoint_x-robot_x))
 
-    wheel_vel = 30 # tick
-    
+    print(f'Waypoint angle {waypoint_angle} and robot angle {robot_theta}')
+
+    #Calculate smallest angle
+    angle1 = waypoint_angle - robot_theta
+    if waypoint_angle < 0:
+        angle2 = waypoint_angle - robot_theta + 2*np.pi
+    else:
+        angle2 = waypoint_angle - robot_theta - 2*np.pi
+
+    if abs(angle1) > abs(angle2):
+        angle = angle2
+    else:
+        angle = angle1
+
+    distance = np.sqrt((waypoint_x-robot_x)**2 + (waypoint_y-robot_y)**2) #calculates distance between robot and object
+
+    print(f'Turn {angle} and drive {distance}')
+
+    wheel_vel = 30 #ticks
+    # Convert to m/s
+    left_speed_m = wheel_vel * scale
+    right_speed_m = wheel_vel * scale
+
+    # Compute the linear and angular velocity
+    linear_velocity = (left_speed_m + right_speed_m) / 2.0
+
+    # Convert to m/s
+    left_speed_m = -wheel_vel * scale
+    right_speed_m = wheel_vel * scale
+
+    angular_velocity = (right_speed_m - left_speed_m) / baseline
+
+    print(f'Ang vel is {angular_velocity}')
     # turn towards the waypoint
-    base_line = 0.535024533975867245
-    turn_time = (base_line * angle)/(wheel_vel) # replace with your calculation
+    turn_time = abs(angle/angular_velocity)
 
     print("Turning for {:.2f} seconds".format(turn_time))
-    ppi.set_velocity([0, 1], turning_tick=wheel_vel, time=turn_time)
-    
+    if angle >= 0:
+        lv1, rv1 = ppi.set_velocity([0, 1], turning_tick=wheel_vel, time=turn_time)
+    else:
+        lv1, rv1 = ppi.set_velocity([0, -1], turning_tick=wheel_vel, time=turn_time)
     # after turning, drive straight to the waypoint
-    d = ((waypoint[1]+robot_pose[1]**2)+(waypoint[0]+robot_pose[0])**2) #calculating the distance to the point
-    scale = 2635203168862666930*10^-3
-    drive_time = d*scale
+    drive_time = distance/linear_velocity
     print("Driving for {:.2f} seconds".format(drive_time))
-    ppi.set_velocity([1, 0], tick=wheel_vel, time=drive_time)
+    lv2, rv2 = ppi.set_velocity([1, 0], tick=wheel_vel, time=drive_time)
     ####################################################
 
     print("Arrived at [{}, {}]".format(waypoint[0], waypoint[1]))
+
+    new_robot_pose = [waypoint_x, waypoint_y, waypoint_angle]
+    return new_robot_pose
 
 
 def get_robot_pose():
@@ -138,21 +173,37 @@ def get_robot_pose():
     # TODO: replace with your codes to estimate the pose of the robot
     # We STRONGLY RECOMMEND you to use your SLAM code from M2 here
     # update the robot pose [x,y,theta]
-    image_poses = {}
-    with open(f'{script_dir}/lab_output/images.txt') as fp:
-        for line in fp.readlines():
-            pose_dict = ast.literal_eval(line)
-            image_poses[pose_dict['imgfname']] = pose_dict['pose']
+    # image_poses = {}
+    # with open(f'{script_dir}/lab_output/images.txt') as fp:
+    #     for line in fp.readlines():
+    #         pose_dict = ast.literal_eval(line)
+    #         image_poses[pose_dict['imgfname']] = pose_dict['pose']
 
-    robot_pose = image_poses[image_poses.keys()[-1]]
+    # robot_pose = image_poses[image_poses.keys()[-1]]
     ####################################################
 
-    return robot_pose
+    return [0,0,0]
 
+def init_ekf():
+    datadir = "calibration/param/"
+    ip = "localhost"
+    fileK = "{}intrinsic.txt".format(datadir)
+    camera_matrix = np.loadtxt(fileK, delimiter=',')
+    fileD = "{}distCoeffs.txt".format(datadir)
+    dist_coeffs = np.loadtxt(fileD, delimiter=',')
+    fileS = "{}scale.txt".format(datadir)
+    scale = np.loadtxt(fileS, delimiter=',')
+    if ip == 'localhost':
+        scale /= 2
+    fileB = "{}baseline.txt".format(datadir)  
+    baseline = np.loadtxt(fileB, delimiter=',')
+    robot = Robot(baseline, scale, camera_matrix, dist_coeffs)
+    return EKF(robot)
+    
 # main loop
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Fruit searching")
-    parser.add_argument("--map", type=str, default='M4_true_map_full.txt') # change to 'M4_true_map_part.txt' for lv2&3
+    parser.add_argument("--map", type=str, default='M4_prac_map_full.txt') # change to 'M4_true_map_part.txt' for lv2&3
     parser.add_argument("--ip", metavar='', type=str, default='192.168.50.1')
     parser.add_argument("--port", metavar='', type=int, default=8080)
     args, _ = parser.parse_known_args()
@@ -186,12 +237,12 @@ if __name__ == "__main__":
             continue
 
         # estimate the robot's pose
-        robot_pose = get_robot_pose()
+
 
         # robot drives to the waypoint
         waypoint = [x,y]
-        drive_to_point(waypoint,robot_pose)
-        print("Finished driving to waypoint: {}; New robot pose: {}".format(waypoint,robot_pose))
+        robot_pose = drive_to_point(waypoint,robot_pose,ppi)
+        print("Finished driving to waypoint: {}; New robot pose: {}".format(waypoint,robot_pose,ppi))
 
         # exit
         ppi.set_velocity([0, 0])

@@ -33,7 +33,7 @@ class PenguinPi:
                 f"http://{self.ip}:{self.port}/robot/set/velocity?value="+str(l_vel)+","+str(r_vel))
         else:
             assert (time > 0), "Time must be positive."
-            assert (time < 30), "Time must be less than network timeout (20s)."
+            #assert (time < 30), "Time must be less than network timeout (20s)."
             requests.get(
                 "http://"+self.ip+":"+str(self.port)+"/robot/set/velocity?value="+str(l_vel)+","+str(r_vel)
                             +"&time="+str(time))
