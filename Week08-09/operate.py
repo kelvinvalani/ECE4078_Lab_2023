@@ -1,12 +1,13 @@
 # teleoperate the robot, perform SLAM and object detection
 
+import math
 import os
 import sys
 import time
 import cv2
 import numpy as np
 import json
-
+from planner import *
 # import utility functions
 sys.path.insert(0, "{}/util".format(os.getcwd()))
 from util.pibot import PenguinPi    # access the robot
@@ -82,9 +83,9 @@ class Operate:
 
         #M4 initialization
         self.forward = False
-        self.waypoint_idx = 0
+        self.destination_idx = 0
         self.autonomous = False
-        self.waypoints_arr = [[0.5,0.5],[0,0],[0.7,0],[0,-0.4]] #set first path
+        self.waypoints_arr = [] #set first path
         self.obstacles = []
         self.current_wp = [0,0] #set waypoint to second point in path
         self.robot_pose = [0,0,0]
@@ -94,6 +95,13 @@ class Operate:
         self.tick = 30
         self.turning_tick = 5
         self.map = 'M4_prac_map_full.txt'
+        self.path_planner = PathPlanner(self.obstacles, self.waypoints_arr)
+        self.occupancy_grid = []
+        self.path_mat = []
+        self.waypoint_mat = []
+        self.goal_pos=[]
+        self.isPlanned = False
+
     # wheel control
     def     control(self):
         if args.play_data:
@@ -326,8 +334,8 @@ class Operate:
             sys.exit()
 
     def turn_robot(self):
-        waypoint_x = self.current_wp[0]
-        waypoint_y = self.current_wp[1]
+        waypoint_x = (self.current_wp[0]/100)-1.5
+        waypoint_y = (self.current_wp[1]/100)-1.5
         robot_x = self.robot_pose[0]
         robot_y = self.robot_pose[1]
         robot_theta = self.robot_pose[2]
@@ -344,9 +352,6 @@ class Operate:
             self.theta_error = theta1
 
         if self.forward == False:
-            #Update turning tick speed depending on theta_error to waypoint
-            self.turning_tick = int(abs(5 * self.theta_error) + 3)
-            # print(f"Turning tick {self.turning_tick} with {self.theta_error}")
 
             if self.theta_error > 0:
                 self.command['motion'] = [0,-1]
@@ -357,11 +362,11 @@ class Operate:
                 self.notification = 'Robot is turning left'
 
     def drive_robot(self):
-        waypoint_x = self.current_wp[0]
-        waypoint_y = self.current_wp[1]
+        waypoint_x = (self.current_wp[0]/100)-1.5
+        waypoint_y = (self.current_wp[1]/100)-1.5
         robot_x = self.robot_pose[0]
         robot_y = self.robot_pose[1]
-
+        print("traveling to waypoint" , waypoint_x,waypoint_y)
         self.distance = np.sqrt((waypoint_x-robot_x)**2 + (waypoint_y-robot_y)**2) #calculates distance between robot and waypoint
 
         self.turn_robot() # turn robot
@@ -378,9 +383,6 @@ class Operate:
 
         #Driving forward
         if self.forward:
-            #Update tick speed depending on distance to waypoint
-            self.tick = int(10 * self.distance  + 30)
-            # print(f"Driving tick {self.tick} with {self.distance}")
 
             #Drive until goal arrived
             distance_threshold = 0.1 #0.05
@@ -388,13 +390,13 @@ class Operate:
                 self.command['motion'] = [0,0]
                 self.notification = 'Robot arrived'
                 self.forward = False
-                self.waypoint_idx += 1
+                self.destination_idx += 1
                 
                 #Check if last path and last waypoint reached
-                if self.waypoint_idx > len(self.waypoints_arr)-1: #reached last wp of path
+                if self.destination_idx > len(self.waypoint_mat)-1: #reached last wp of path
                     self.autonomous = False
                 else: #Increment path
-                    self.current_wp = self.waypoints_arr[self.waypoint_idx]
+                    self.current_wp = self.waypoint_mat[self.destination_idx]
                 self.pibot.set_velocity([0,0],time = 3)
                 print(f"Moving to new waypoint {self.current_wp}")
                 return
@@ -477,17 +479,42 @@ class Operate:
 
             return fruit_list, fruit_true_pos, aruco_true_pos
         
-    def generate_waypoints(self):
+    def generate_obstacles(self):
         fruits_list, fruits_true_pos, aruco_true_pos = self.read_true_map(self.map)
-        print(fruits_true_pos, aruco_true_pos)
         search_list = self.read_search_list()
-        goal_pos = self.print_target_fruits_pos(search_list, fruits_list, fruits_true_pos)
-        all_objects_pos = fruits_true_pos + aruco_true_pos
+        goals = self.print_target_fruits_pos(search_list, fruits_list, fruits_true_pos)
+        all_objects_pos = [*fruits_true_pos, *aruco_true_pos]
         obstacle_pos = []
+        goal_pos = []
         for i in range(len(all_objects_pos)):
-            if list(all_objects_pos[i]) not in goal_pos:
-                obstacle_pos.append(all_objects_pos[i])
+            object_pos_map = []
+            object_pos = []
+            for j in range(len(all_objects_pos[i])):
+                object_pos_map.append(math.ceil((all_objects_pos[i][j]+1.5)*100))
+                object_pos.append(all_objects_pos[i][j])
+            if object_pos not in goals:
+                obstacle_pos.append(object_pos_map)
+
+        print(obstacle_pos)
+        for i in range(len(goals)):
+            current_goal=[]
+            for j in range(len(goals[i])):
+                current_goal.append(round((goals[i][j]+1.5)*100))
+            goal_pos.append(current_goal)
         return goal_pos,obstacle_pos
+
+    def generate_waypoints(self):
+        occupancy_grid = self.path_planner.create_occupancy_grid()
+        for i in range(len(self.goal_pos)):
+            path = self.path_planner.astar(occupancy_grid, self.path_planner.start, self.goal_pos[i])
+            waypoints = self.path_planner.extract_edges(path)
+            self.path_mat.append(path)
+            self.waypoint_mat.append(waypoints)
+            self.path_planner.start = self.goal_pos[i][::-1]
+
+        self.path_planner.plot_path_on_occupancy_grid(self.path_mat)
+        journey_list = [item for sublist in self.waypoint_mat for item in sublist]
+        return journey_list
 
 if __name__ == "__main__":
     import argparse
@@ -538,13 +565,15 @@ if __name__ == "__main__":
         operate.update_keyboard()
         operate.take_pic()
         if operate.autonomous:
-            operate.waypoints_arr,operate.obstacles = operate.generate_waypoints()
-            print(operate.obstacles)
+            if not operate.isPlanned:
+                operate.goal_pos,operate.obstacles = operate.generate_obstacles()
+                operate.path_planner.obstacles = operate.obstacles
+                operate.waypoint_mat = operate.generate_waypoints()
+                operate.isPlanned = True
             print("current pose" ,operate.robot_pose)
             print("navigating in autonomous mode")
-            print("travelling to " , operate.waypoints_arr[operate.waypoint_idx])
-            operate.current_wp = operate.waypoints_arr[operate.waypoint_idx]
-            #operate.drive_robot()
+            operate.current_wp = operate.waypoint_mat[operate.destination_idx][::-1]
+            operate.drive_robot()
         drive_meas = operate.control()
         operate.update_slam(drive_meas)
         operate.robot_pose = operate.ekf.robot.state
