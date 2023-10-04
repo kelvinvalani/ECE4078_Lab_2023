@@ -18,7 +18,7 @@ class EKF:
         self.robot = robot
         self.markers = np.zeros((2,0))
         self.taglist = []
-
+        self.known_map = False
         # Covariance matrix
         self.P = np.zeros((3,3))
         self.init_lm_cov = 1e3
@@ -176,6 +176,11 @@ class EKF:
             self.P = np.concatenate((self.P, np.zeros((self.P.shape[0], 2))), axis=1)
             self.P[-2,-2] = self.init_lm_cov**2
             self.P[-1,-1] = self.init_lm_cov**2
+
+            if self.known_map:
+                self.P[-2,-2] = 0
+                self.P[-1,-1] = 0
+
 
     ##########################################
     ##########################################

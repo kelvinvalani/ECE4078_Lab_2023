@@ -10,16 +10,16 @@ class PathPlanner:
         self.obstacles = obstacles
         self.destinations = destinations
         self.grid_size = (300,300)
-        self.obstacle_radius = 5
+        self.obstacle_radius = 15
         self.occupancy_grid = []
-        self.start = [150,150]
+        self.start = [150, 150]
 
     def create_occupancy_grid(self):
         # Create an empty grid
         self.occupancy_grid = np.zeros(self.grid_size)
 
         for obstacle in self.obstacles:
-            x, y = obstacle
+            y, x = obstacle
 
             # Calculate the range of grid cells affected by the obstacle
             x_range = slice(max(0, x - self.obstacle_radius), min(self.grid_size[0], x + self.obstacle_radius + 1))
@@ -88,11 +88,10 @@ class PathPlanner:
         plt.title('Occupancy Grid with Path')
         plt.grid()
 
-        for i in range(len(path_mat)):
-            if path_mat[i]:
-                path = np.array(path_mat[i])
-                plt.plot(path[:, 1], path[:, 0], marker='o', color='red', markersize=5, label='Path')
-                plt.legend()
+        if path_mat:
+            path = np.array(path_mat)
+            plt.plot(path[:, 1], path[:, 0], marker='o', color='red', markersize=5, label='Path')
+            plt.legend()
 
         plt.show()
 
@@ -113,8 +112,8 @@ class PathPlanner:
 if __name__ == '__main__':
 
     # Example usage:
-    obstacle_coordinates = [[170, 50], [70, 200], [150, 240], [90, 80], [180, 190], [270, 230], [260, 90], [230, 31], [120, 80], [150, 270], [90, 150], [111, 230], [70, 31], [31, 190], [230, 150]]
-    destinations = [[220, 90], [110, 30], [40, 140], [230, 230], [90, 270]]
+    obstacle_coordinates = [[70, 270], [50, 150], [250, 70], [170, 150], [150, 100], [200, 130], [270, 150], [200, 250], [100, 200], [250, 250], [70, 180], [200, 50], [30, 260], [50, 50], [270, 30], [120, 30], [140, 120], [180, 210], [220, 170]]
+    destinations = [[50, 100]]
     planner = PathPlanner(obstacle_coordinates,destinations)
     occupancy_grid = planner.create_occupancy_grid()
 
@@ -127,7 +126,7 @@ if __name__ == '__main__':
         waypoints_mat.append(waypoints)
         planner.start = destinations[i][::-1]
     if path_mat:
-        planner.plot_path_on_occupancy_grid(path_mat)
+        planner.plot_path_on_occupancy_grid(path_mat[0])
     else:
         print("No path found")
     

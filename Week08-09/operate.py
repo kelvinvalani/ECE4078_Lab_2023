@@ -43,6 +43,7 @@ class Operate:
 
         # initialise SLAM parameters
         self.ekf = self.init_ekf(args.calib_dir, args.ip)
+        self.ekf.known_map = True
         self.aruco_det = aruco.aruco_detector(
             self.ekf.robot, marker_length=0.07)  # size of the ARUCO markers
 
@@ -85,22 +86,22 @@ class Operate:
         self.forward = False
         self.destination_idx = 0
         self.autonomous = False
-        self.waypoints_arr = [] #set first path
         self.obstacles = []
         self.current_wp = [0,0] #set waypoint to second point in path
         self.robot_pose = [0,0,0]
-
-        self.min_dist = 50
-
+        self.current_destination = None
+        self.distance_threshold = 0.2
+        self.goal_threshold = 0.25
         self.tick = 30
         self.turning_tick = 5
         self.map = 'M4_prac_map_full.txt'
-        self.path_planner = PathPlanner(self.obstacles, self.waypoints_arr)
         self.occupancy_grid = []
         self.path_mat = []
         self.waypoint_mat = []
         self.goal_pos=[]
         self.isPlanned = False
+        self.path_planner = PathPlanner(self.obstacles, self.waypoint_mat)
+        self.path_planner.obstacle_radius = args.obstacle_radius
 
     # wheel control
     def     control(self):
@@ -108,7 +109,7 @@ class Operate:
             lv, rv = self.pibot.set_velocity()
         else:
             lv, rv = self.pibot.set_velocity(
-                self.command['motion'])
+                self.command['motion'],tick=30)
         if self.data is not None:
             self.data.write_keyboard(lv, rv)
         dt = time.time() - self.control_clock
@@ -339,17 +340,21 @@ class Operate:
         robot_x = self.robot_pose[0]
         robot_y = self.robot_pose[1]
         robot_theta = self.robot_pose[2]
-        waypoint_angle = np.arctan2((waypoint_y-robot_y),(waypoint_x-robot_x))
-        theta1 = robot_theta - waypoint_angle
-        if waypoint_angle < 0:
-            theta2 = robot_theta - waypoint_angle - 2*np.pi
-        else:
-            theta2 = robot_theta - waypoint_angle + 2*np.pi
 
-        if abs(theta1) > abs(theta2):
-            self.theta_error = theta2
+        waypoint_angle = np.arctan2((waypoint_y-robot_y),(waypoint_x-robot_x))
+
+        theta1 = robot_theta - waypoint_angle
+
+        if (self.current_wp[1],self.current_wp[0]) == self.waypoint_mat[0]:
+            self.theta_error = 0
+        elif theta1 >np.pi:
+            self.theta_error = theta1 - 2*np.pi
+        elif theta1< -np.pi:
+            self.theta_error = theta1 + 2*np.pi
         else:
             self.theta_error = theta1
+
+
 
         if self.forward == False:
 
@@ -364,11 +369,13 @@ class Operate:
     def drive_robot(self):
         waypoint_x = (self.current_wp[0]/100)-1.5
         waypoint_y = (self.current_wp[1]/100)-1.5
+        goal_x = (self.current_destination[0]/100)-1.5
+        goal_y = (self.current_destination[1]/100)-1.5
         robot_x = self.robot_pose[0]
         robot_y = self.robot_pose[1]
         print("traveling to waypoint" , waypoint_x,waypoint_y)
         self.distance = np.sqrt((waypoint_x-robot_x)**2 + (waypoint_y-robot_y)**2) #calculates distance between robot and waypoint
-
+        self.goal_distance =  np.sqrt((goal_x-robot_x)**2 + (goal_y-robot_y)**2)
         self.turn_robot() # turn robot
 
         # stop turning if less than threshold
@@ -385,8 +392,7 @@ class Operate:
         if self.forward:
 
             #Drive until goal arrived
-            distance_threshold = 0.1 #0.05
-            if self.distance < distance_threshold:
+            if self.distance < self.distance_threshold or self.goal_distance < self.goal_threshold:
                 self.command['motion'] = [0,0]
                 self.notification = 'Robot arrived'
                 self.forward = False
@@ -394,7 +400,7 @@ class Operate:
                 
                 #Check if last path and last waypoint reached
                 if self.destination_idx > len(self.waypoint_mat)-1: #reached last wp of path
-                    self.autonomous = False
+                    self.isPlanned = False
                 else: #Increment path
                     self.current_wp = self.waypoint_mat[self.destination_idx]
                 self.pibot.set_velocity([0,0],time = 3)
@@ -439,7 +445,6 @@ class Operate:
 
             for fruit in fruits:
                 search_list.append(fruit.strip())
-
         return search_list
 
     def read_true_map(self,fname):
@@ -483,19 +488,22 @@ class Operate:
         fruits_list, fruits_true_pos, aruco_true_pos = self.read_true_map(self.map)
         search_list = self.read_search_list()
         goals = self.print_target_fruits_pos(search_list, fruits_list, fruits_true_pos)
-        all_objects_pos = [*fruits_true_pos, *aruco_true_pos]
+
+        for i in range(len(aruco_true_pos)):
+            landmark = measure.Marker(aruco_true_pos[i].reshape(-1,1),i+1)
+            self.ekf.add_landmarks([landmark])
+
+        all_objects_pos = [*fruits_true_pos,*aruco_true_pos]
         obstacle_pos = []
         goal_pos = []
         for i in range(len(all_objects_pos)):
             object_pos_map = []
-            object_pos = []
             for j in range(len(all_objects_pos[i])):
-                object_pos_map.append(math.ceil((all_objects_pos[i][j]+1.5)*100))
-                object_pos.append(all_objects_pos[i][j])
-            if object_pos not in goals:
+                object_pos_map.append(round((all_objects_pos[i][j]+1.5)*100))
+
+            if object_pos_map != self.current_destination:
                 obstacle_pos.append(object_pos_map)
 
-        print(obstacle_pos)
         for i in range(len(goals)):
             current_goal=[]
             for j in range(len(goals[i])):
@@ -503,18 +511,23 @@ class Operate:
             goal_pos.append(current_goal)
         return goal_pos,obstacle_pos
 
+    def add_destination_obstacles(self,destinations,obstcales):
+        for destination in destinations:
+            if destination != self.current_destination:
+                obstcales.append(destination)
+        return obstcales
+    
     def generate_waypoints(self):
         occupancy_grid = self.path_planner.create_occupancy_grid()
-        for i in range(len(self.goal_pos)):
-            path = self.path_planner.astar(occupancy_grid, self.path_planner.start, self.goal_pos[i])
-            waypoints = self.path_planner.extract_edges(path)
-            self.path_mat.append(path)
-            self.waypoint_mat.append(waypoints)
-            self.path_planner.start = self.goal_pos[i][::-1]
+
+        path = self.path_planner.astar(occupancy_grid, self.path_planner.start, self.current_destination)
+        waypoints = self.path_planner.extract_edges(path)
+        self.path_mat= path
+        self.waypoint_mat=waypoints
 
         self.path_planner.plot_path_on_occupancy_grid(self.path_mat)
-        journey_list = [item for sublist in self.waypoint_mat for item in sublist]
-        return journey_list
+
+        return self.waypoint_mat
 
 if __name__ == "__main__":
     import argparse
@@ -526,6 +539,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_data", action='store_true')
     parser.add_argument("--play_data", action='store_true')
     parser.add_argument("--yolo_model", default='YOLO/model/yolov8_model.pt')
+    parser.add_argument("--obstacle_radius",default=15,type =int)
     args, _ = parser.parse_known_args()
 
     pygame.font.init()
@@ -560,20 +574,47 @@ if __name__ == "__main__":
             counter += 2
 
     operate = Operate(args)
+    print("obstacle radius is : " , operate.path_planner.obstacle_radius)
     operate.ekf_on = True
     while start:
         operate.update_keyboard()
         operate.take_pic()
         if operate.autonomous:
-            if not operate.isPlanned:
-                operate.goal_pos,operate.obstacles = operate.generate_obstacles()
-                operate.path_planner.obstacles = operate.obstacles
-                operate.waypoint_mat = operate.generate_waypoints()
-                operate.isPlanned = True
-            print("current pose" ,operate.robot_pose)
-            print("navigating in autonomous mode")
-            operate.current_wp = operate.waypoint_mat[operate.destination_idx][::-1]
-            operate.drive_robot()
+            operate.goal_pos, _ = operate.generate_obstacles()
+            print("order of destinations" ,operate.goal_pos)
+            for destination in operate.goal_pos:
+                operate.distance_threshold =0.2
+                operate.destination_idx = 0
+                operate.current_destination = destination
+                print("current destination",operate.current_destination)
+                if not operate.isPlanned:
+                    _, operate.obstacles = operate.generate_obstacles()
+                    print("obstacles",operate.obstacles)
+                    operate.path_planner.obstacles = operate.obstacles
+                    operate.path_planner.start = [int((operate.robot_pose[1][0]+1.5)*100),int((operate.robot_pose[0][0]+1.5)*100)]
+                    print("starting from", operate.path_planner.start)
+                    operate.waypoint_mat = operate.generate_waypoints()
+                    print("waypoints",operate.waypoint_mat)
+                    operate.isPlanned = True
+                
+                while operate.isPlanned:
+                    operate.update_keyboard()
+                    operate.take_pic()
+                    print("current pose" ,operate.robot_pose)
+                    operate.current_wp = operate.waypoint_mat[operate.destination_idx][::-1]
+                    print(operate.current_wp)
+                    operate.drive_robot()
+                    drive_meas = operate.control()
+                    operate.update_slam(drive_meas)
+                    operate.robot_pose = operate.ekf.robot.state
+                    operate.record_data()
+                    operate.save_image()
+                    operate.detect_target()
+                    # visualise
+                    operate.draw(canvas)
+                    pygame.display.update()
+            operate.autonomous = False
+
         drive_meas = operate.control()
         operate.update_slam(drive_meas)
         operate.robot_pose = operate.ekf.robot.state
