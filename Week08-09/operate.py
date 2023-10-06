@@ -94,7 +94,7 @@ class Operate:
         self.goal_threshold = 0.25
         self.tick = 30
         self.turning_tick = 5
-        self.map = 'M4_prac_map_full.txt'
+        self.map = 'thur8am_week8practiceFULL.txt'
         self.occupancy_grid = []
         self.path_mat = []
         self.waypoint_mat = []
@@ -391,6 +391,8 @@ class Operate:
         #Driving forward
         if self.forward:
 
+            print("distance to waypoint " ,self.distance)
+            print("distance to destination",self.goal_distance)
             #Drive until goal arrived
             if self.distance < self.distance_threshold or self.goal_distance < self.goal_threshold:
                 self.command['motion'] = [0,0]
