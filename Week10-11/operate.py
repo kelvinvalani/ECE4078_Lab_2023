@@ -90,8 +90,8 @@ class Operate:
         self.current_wp = [0,0] #set waypoint to second point in path
         self.robot_pose = [0,0,0]
         self.current_destination = None
-        self.distance_threshold = 0.2
-        self.goal_threshold = 0.25
+        self.distance_threshold = 0.05
+        self.goal_threshold = 0.3
         self.tick = 30
         self.turning_tick = 5
         self.map = 'known_map.txt'
@@ -109,7 +109,7 @@ class Operate:
             lv, rv = self.pibot.set_velocity()
         else:
             lv, rv = self.pibot.set_velocity(
-                self.command['motion'],tick=30)
+                self.command['motion'],tick=50)
         if self.data is not None:
             self.data.write_keyboard(lv, rv)
         dt = time.time() - self.control_clock
@@ -451,7 +451,7 @@ class Operate:
 
     def create_known_map(self):
 
-        slam,target, output_file = './lab_output/slam.txt', './lab_output/target.txt', './known_map.txt'
+        slam,target, output_file = './lab_output/slam.txt', './lab_output/targets.txt', './known_map.txt'
         with open(slam, 'r') as infile:
             slam_data = json.load(infile)
 
@@ -550,7 +550,8 @@ class Operate:
         self.path_mat= path
         self.waypoint_mat=waypoints
 
-        self.path_planner.plot_path_on_occupancy_grid(self.path_mat)
+        if len(self.waypoint_mat) > 0:
+            self.path_planner.plot_path_on_occupancy_grid(self.path_mat)
 
         return self.waypoint_mat
 
@@ -600,16 +601,15 @@ if __name__ == "__main__":
 
     operate = Operate(args)
     print("obstacle radius is : " , operate.path_planner.obstacle_radius)
-    operate.ekf_on = True
     while start:
         operate.update_keyboard()
         operate.take_pic()
         if operate.autonomous:
+            operate.ekf_on = True
             operate.create_known_map()
             operate.goal_pos, _ = operate.generate_obstacles()
             print("order of destinations" ,operate.goal_pos)
             for destination in operate.goal_pos:
-                operate.distance_threshold =0.2
                 operate.destination_idx = 0
                 operate.current_destination = destination
                 print("current destination",operate.current_destination)
@@ -620,6 +620,10 @@ if __name__ == "__main__":
                     operate.path_planner.start = [int((operate.robot_pose[1][0]+1.5)*100),int((operate.robot_pose[0][0]+1.5)*100)]
                     print("starting from", operate.path_planner.start)
                     operate.waypoint_mat = operate.generate_waypoints()
+                    while len(operate.waypoint_mat) <=0:
+                        operate.path_planner.obstacle_radius =  operate.path_planner.obstacle_radius - 1
+                        operate.waypoint_mat = operate.generate_waypoints()
+                    operate.path_planner.obstacle_radius = args.obstacle_radius
                     print("waypoints",operate.waypoint_mat)
                     operate.isPlanned = True
                 

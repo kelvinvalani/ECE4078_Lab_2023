@@ -112,8 +112,15 @@ class EKF:
         tags = [lm.tag for lm in measurements]
         idx_list = [self.taglist.index(tag) for tag in tags]
 
+        if (tag > 10 for tag in tags):
+            return
+        
+
+        print("SHOULDNT BE CALLED")
+        
         # Stack measurements and set covariance
         z = np.concatenate([lm.position.reshape(-1,1) for lm in measurements], axis=0)
+        print(z)
         R = np.zeros((2*len(measurements),2*len(measurements)))
         for i in range(len(measurements)):
             R[2*i:2*i+2,2*i:2*i+2] = measurements[i].covariance
