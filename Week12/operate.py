@@ -43,7 +43,7 @@ class Operate:
 
         # initialise SLAM parameters
         self.ekf = self.init_ekf(args.calib_dir, args.ip)
-        self.ekf.known_map = True
+        self.ekf.known_map = False
         self.aruco_det = aruco.aruco_detector(
             self.ekf.robot, marker_length=0.07)  # size of the ARUCO markers
 
@@ -605,6 +605,7 @@ if __name__ == "__main__":
         operate.update_keyboard()
         operate.take_pic()
         if operate.autonomous:
+            operate.ekf.known_map = True
             operate.ekf_on = True
             operate.create_known_map()
             operate.goal_pos, _ = operate.generate_obstacles()

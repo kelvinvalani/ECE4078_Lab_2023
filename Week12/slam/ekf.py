@@ -21,7 +21,7 @@ class EKF:
         self.known_map = False
         # Covariance matrix
         self.P = np.zeros((3,3))
-        self.init_lm_cov = 1e4
+        self.init_lm_cov = 1e3
         self.robot_init_state = None
         self.lm_pics = []
         for i in range(1, 11):
@@ -38,7 +38,7 @@ class EKF:
         self.taglist = []
         # Covariance matrix
         self.P = np.zeros((3,3))
-        self.init_lm_cov = 1e4
+        self.init_lm_cov = 1e3
         self.robot_init_state = None
 
     def number_landmarks(self):
@@ -183,7 +183,7 @@ class EKF:
             self.P = np.concatenate((self.P, np.zeros((2, self.P.shape[1]))), axis=0)
             self.P = np.concatenate((self.P, np.zeros((self.P.shape[0], 2))), axis=1)
 
-            if self.number_landmarks > 0:
+            if self.number_landmarks() > 1:
                 self.firstMarker = False
 
             if self.known_map:
