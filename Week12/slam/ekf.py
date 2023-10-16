@@ -30,7 +30,6 @@ class EKF:
         f_ = f'./pics/8bit/lm_unknown.png'
         self.lm_pics.append(pygame.image.load(f_))
         self.pibot_pic = pygame.image.load(f'./pics/8bit/pibot_top.png')
-        self.firstMarker = True
         
     def reset(self):
         self.robot.state = np.zeros((3, 1))
@@ -156,7 +155,7 @@ class EKF:
     def predict_covariance(self, raw_drive_meas):
         n = self.number_landmarks()*2 + 3
         Q = np.zeros((n,n))
-        Q[0:3,0:3] = self.robot.covariance_drive(raw_drive_meas)+  0.0001 * np.power(n, 2) *np.eye(3)
+        Q[0:3,0:3] = self.robot.covariance_drive(raw_drive_meas)+ 0.01*np.eye(3)
         return Q
 
     def add_landmarks(self, measurements):
@@ -182,21 +181,12 @@ class EKF:
             # Create a simple, large covariance to be fixed by the update step
             self.P = np.concatenate((self.P, np.zeros((2, self.P.shape[1]))), axis=0)
             self.P = np.concatenate((self.P, np.zeros((self.P.shape[0], 2))), axis=1)
-
-            if self.number_landmarks() > 1:
-                self.firstMarker = False
+            self.P[-2,-2] = self.init_lm_cov**2
+            self.P[-1,-1] = self.init_lm_cov**2
 
             if self.known_map:
                 self.P[-2,-2] = 0
                 self.P[-1,-1] = 0
-            elif self.firstMarker:
-                self.P[-2,-2] = 0
-                self.P[-1,-1] = 0
-                self.firstMarker = False
-            else:
-                self.P[-2,-2] = self.init_lm_cov**2
-                self.P[-1,-1] = self.init_lm_cov**2
-
 
 
     ##########################################
