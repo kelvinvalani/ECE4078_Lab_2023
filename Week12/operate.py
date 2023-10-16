@@ -403,9 +403,10 @@ class Operate:
                 #Check if last path and last waypoint reached
                 if self.destination_idx > len(self.waypoint_mat)-1: #reached last wp of path
                     self.isPlanned = False
+                    self.pibot.set_velocity([0,0],time = 3)
                 else: #Increment path
                     self.current_wp = self.waypoint_mat[self.destination_idx]
-                self.pibot.set_velocity([0,0],time = 3)
+                
                 print(f"Moving to new waypoint {self.current_wp}")
                 return
 
