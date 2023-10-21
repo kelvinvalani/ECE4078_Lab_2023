@@ -18,7 +18,7 @@ class EKF:
         self.robot = robot
         self.markers = np.zeros((2,0))
         self.taglist = []
-        self.known_map = False
+        self.known_map = True
         # Covariance matrix
         self.P = np.zeros((3,3))
         self.init_lm_cov = 1e3
@@ -110,17 +110,29 @@ class EKF:
 
         # Construct measurement index list
         tags = [lm.tag for lm in measurements]
+
+        for tag in tags:
+            if tag > 10:
+                print("shouldnt be here")
+                return
+            
         idx_list = [self.taglist.index(tag) for tag in tags]
-
-        if (tag > 10 for tag in tags):
-            return
-        
-
-        print("SHOULDNT BE CALLED")
-        
         # Stack measurements and set covariance
         z = np.concatenate([lm.position.reshape(-1,1) for lm in measurements], axis=0)
-        print(z)
+
+        # newz = []
+        # for i in range(len(z)):
+        #     vals = []
+        #     for val in z[i]:
+        #         if i == 0:
+        #             vals.append(val + 0.04)
+        #         else:
+        #             vals.append(val -0.04)
+        #     newz.append(vals)
+        # z = newz
+
+        # print(z)
+            
         R = np.zeros((2*len(measurements),2*len(measurements)))
         for i in range(len(measurements)):
             R[2*i:2*i+2,2*i:2*i+2] = measurements[i].covariance
@@ -131,7 +143,6 @@ class EKF:
         H = self.robot.derivative_measure(self.markers, idx_list)
 
         x = self.get_state_vector()
-        y = z-z_hat
         # todo: add your codes here to compute the updated x
         #Compute Kalman Gain
         S = H @ self.P @ H.T + R #+ 0.01*np.eye(R.shape[0])
@@ -155,7 +166,10 @@ class EKF:
     def predict_covariance(self, raw_drive_meas):
         n = self.number_landmarks()*2 + 3
         Q = np.zeros((n,n))
-        Q[0:3,0:3] = self.robot.covariance_drive(raw_drive_meas)+ 0.01*np.eye(3)
+        if self.known_map:
+            Q[0:3,0:3] = self.robot.covariance_drive(raw_drive_meas)+ 0.0001*np.eye(3)
+        else:
+            Q[0:3,0:3] = self.robot.covariance_drive(raw_drive_meas)+ 0.0001*np.eye(3)
         return Q
 
     def add_landmarks(self, measurements):
@@ -181,12 +195,16 @@ class EKF:
             # Create a simple, large covariance to be fixed by the update step
             self.P = np.concatenate((self.P, np.zeros((2, self.P.shape[1]))), axis=0)
             self.P = np.concatenate((self.P, np.zeros((self.P.shape[0], 2))), axis=1)
-            self.P[-2,-2] = self.init_lm_cov**2
-            self.P[-1,-1] = self.init_lm_cov**2
 
-            if self.known_map:
+            if self.known_map or self.number_landmarks() <= 1:
                 self.P[-2,-2] = 0
                 self.P[-1,-1] = 0
+            else:
+                self.P[-2,-2] = self.init_lm_cov**2
+                self.P[-1,-1] = self.init_lm_cov**2
+
+             
+
 
 
     ##########################################

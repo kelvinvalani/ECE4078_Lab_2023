@@ -43,7 +43,7 @@ class Operate:
 
         # initialise SLAM parameters
         self.ekf = self.init_ekf(args.calib_dir, args.ip)
-        self.ekf.known_map = True
+        self.ekf.known_map = False
         self.aruco_det = aruco.aruco_detector(
             self.ekf.robot, marker_length=0.07)  # size of the ARUCO markers
 
@@ -91,7 +91,7 @@ class Operate:
         self.robot_pose = [0,0,0]
         self.current_destination = None
         self.distance_threshold = 0.05
-        self.goal_threshold = 0.3
+        self.goal_threshold = 0.25
         self.tick = 30
         self.turning_tick = 5
         self.map = 'known_map.txt'
@@ -108,8 +108,12 @@ class Operate:
         if args.play_data:
             lv, rv = self.pibot.set_velocity()
         else:
-            lv, rv = self.pibot.set_velocity(
-                self.command['motion'],tick=50)
+            if self.ekf.known_map:
+                lv, rv = self.pibot.set_velocity(
+                    self.command['motion'],tick=30)
+            else:
+                lv, rv = self.pibot.set_velocity(
+                    self.command['motion'],tick=50)
         if self.data is not None:
             self.data.write_keyboard(lv, rv)
         dt = time.time() - self.control_clock
@@ -142,9 +146,13 @@ class Operate:
                 self.ekf_on = False
             self.request_recover_robot = False
         elif self.ekf_on:  # and not self.debug_flag:
-            self.ekf.predict(drive_meas)
-            self.ekf.add_landmarks(lms)
-            self.ekf.update(lms)
+            if self.ekf.known_map:
+                self.ekf.predict(drive_meas)
+                self.ekf.update(lms)
+            else:
+                self.ekf.predict(drive_meas)
+                self.ekf.add_landmarks(lms)
+                self.ekf.update(lms)
 
     # using computer vision to detect targets
     def detect_target(self):
@@ -354,6 +362,13 @@ class Operate:
         else:
             self.theta_error = theta1
 
+        print("Theta error", self.theta_error)
+        if abs(self.theta_error) > 0.05:
+            self.forward = False
+        else:
+            self.command['motion'] = [0,0]
+            self.notification = 'Robot stopped turning'
+            self.forward = True #go forward now
 
 
         if self.forward == False:
@@ -365,6 +380,7 @@ class Operate:
             if self.theta_error < 0:
                 self.command['motion'] = [0,1]
                 self.notification = 'Robot is turning left'
+
 
     def drive_robot(self):
         waypoint_x = (self.current_wp[0]/100)-1.5
@@ -390,6 +406,8 @@ class Operate:
 
         #Driving forward
         if self.forward:
+            
+            self.turn_robot()
 
             print("distance to waypoint " ,self.distance)
             print("distance to destination",self.goal_distance)
@@ -608,6 +626,7 @@ if __name__ == "__main__":
         if operate.autonomous:
             operate.ekf_on = True
             operate.create_known_map()
+            operate.ekf.known_map = True
             operate.goal_pos, _ = operate.generate_obstacles()
             print("order of destinations" ,operate.goal_pos)
             for destination in operate.goal_pos:
@@ -616,10 +635,8 @@ if __name__ == "__main__":
                 print("current destination",operate.current_destination)
                 if not operate.isPlanned:
                     _, operate.obstacles = operate.generate_obstacles()
-                    print("obstacles",operate.obstacles)
                     operate.path_planner.obstacles = operate.obstacles
                     operate.path_planner.start = [int((operate.robot_pose[1][0]+1.5)*100),int((operate.robot_pose[0][0]+1.5)*100)]
-                    print("starting from", operate.path_planner.start)
                     operate.waypoint_mat = operate.generate_waypoints()
                     while len(operate.waypoint_mat) <=0:
                         operate.path_planner.obstacle_radius =  operate.path_planner.obstacle_radius - 1
@@ -631,9 +648,10 @@ if __name__ == "__main__":
                 while operate.isPlanned:
                     operate.update_keyboard()
                     operate.take_pic()
-                    print("current pose" ,operate.robot_pose)
+                    print("x: " + str((np.round(operate.robot_pose[0][0],2))) + " y: " + str((np.round(operate.robot_pose[1][0],2))))
                     operate.current_wp = operate.waypoint_mat[operate.destination_idx][::-1]
                     print(operate.current_wp)
+                    operate.robot_pose = operate.ekf.robot.state
                     operate.drive_robot()
                     drive_meas = operate.control()
                     operate.update_slam(drive_meas)
