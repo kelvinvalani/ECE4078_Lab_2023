@@ -110,7 +110,7 @@ class Operate:
         else:
             if self.ekf.known_map:
                 lv, rv = self.pibot.set_velocity(
-                    self.command['motion'],tick=30)
+                    self.command['motion'],tick=30,turning_tick= 20)
             else:
                 lv, rv = self.pibot.set_velocity(
                     self.command['motion'],tick=50)
@@ -425,7 +425,7 @@ class Operate:
                 else: #Increment path
                     self.current_wp = self.waypoint_mat[self.destination_idx]
                 
-                print(f"Moving to new waypoint {self.current_wp}")
+
                 return
 
             else:
