@@ -24,7 +24,7 @@ import slam.aruco_detector as aruco
 
 # import YOLO components 
 from YOLO.detector import Detector
-
+import sys
 
 class Operate:
     def __init__(self, args):
@@ -91,7 +91,7 @@ class Operate:
         self.robot_pose = [0,0,0]
         self.current_destination = None
         self.distance_threshold = 0.05
-        self.goal_threshold = 0.25
+        self.goal_threshold = 0.23
         self.tick = 30
         self.turning_tick = 5
         self.map = 'known_map.txt'
@@ -206,8 +206,11 @@ class Operate:
         if self.command['save_inference']:
             if self.file_output is not None:
                 # image = cv2.cvtColor(self.file_output[0], cv2.COLOR_RGB2BGR)
+                # self.pred_fname = self.output.write_image2(self.file_output[0],
+                #                                           self.file_output[1],self.detector)
                 self.pred_fname = self.output.write_image(self.file_output[0],
                                                           self.file_output[1])
+                
                 self.notification = f'Prediction is saved to {operate.pred_fname}'
             else:
                 self.notification = f'No prediction in buffer, save ignored'
@@ -339,6 +342,7 @@ class Operate:
                 print("moving to " , self.current_wp)
 
         if self.quit:
+            self.pibot.set_velocity([0,0],time = 3)
             pygame.quit()
             sys.exit()
 

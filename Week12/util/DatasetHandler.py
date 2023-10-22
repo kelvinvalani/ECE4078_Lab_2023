@@ -6,7 +6,7 @@ import time
 import csv
 import os
 import json
-
+from TargetPoseEst import estimate_pose
 # save a keyboard control sequence and a list of images seen by the robot
 class DatasetWriter:
     def __init__(self, dataset_name):
@@ -123,6 +123,32 @@ class OutputWriter:
         with open(self.map_f, 'w') as map_f:
             json.dump(map_dict, map_f, indent=2)
             
+    # def write_image2(self, image, slam,detector):
+    #     fileK = './calibration/param/intrinsic.txt'
+    #     camera_matrix = np.loadtxt(fileK, delimiter=',')
+    #     bounding_boxes, bbox_img = detector.detect_single_image(image)
+
+    #     if len(bounding_boxes)>1:
+    #         print("more than one detected")
+    #         return
+    #     # count the occurrence of each target type
+    #     targetPose = estimate_pose(camera_matrix,bounding_boxes[0],slam.robot.state)
+    #     print("pose is: " ,targetPose)
+    #     response = input("press y/n" )
+
+    #     if response == 'y':
+    #         img_fname = "{}pred_{}.png".format(self.folder, self.image_count)
+    #         self.image_count += 1
+    #         img_dict = {"pose":slam.robot.state.tolist(),
+    #                     "imgfname":img_fname}
+    #         img_line = json.dumps(img_dict)
+    #         self.img_f.write(img_line+'\n')
+    #         self.img_f.flush()
+    #         cv2.imwrite(img_fname, image)
+    #         return f'pred_{self.image_count}.png'
+    #     else:
+    #         return
+        
     def write_image(self, image, slam):
         img_fname = "{}pred_{}.png".format(self.folder, self.image_count)
         self.image_count += 1
